@@ -2,7 +2,8 @@
 # Code for: "Performance of variable and function selection methods for
 #            estimating the non-linear health effects of correlated
 #            chemical mixtures: a simulation study."
-# Authors:   Nina Lazarevic,  Luke D. Knibbs,  Peter D. Sly,  Adrian G. Barnett
+# Authors:   Nina Lazarevic, Luke D. Knibbs, Peter D. Sly, Adrian G. Barnett
+# Preprint:  https://arxiv.org/abs/1908.01583
 #
 # Written by Nina Lazarevic using R 3.4.3
 #
@@ -14,16 +15,16 @@
 # Coverage25_OBSCORR_<date>.csv & Coverage25_HALFCORR_<date>.csv
 #   - these tables show MSEs and 90% credible interval coverage proportions
 #     evaluated at the 25th, 50th, and 75th percentiles of an exposure
-#   - 12 columns of 3 percentiles x 4 methods (BKMR, BART, STAR, GAM)
-#   - 64 rows of 16 scenarios for each of 4 true exposures (MPB, BP3, PPB, BPA)
+#   - 21 cols: 3 percentiles x 7 methods (BKMR, BART, STAR, GAMDP, GAMTS, MARS, GAM)
+#   - 64 rows: 16 scenarios for each of 4 true exposures (MPB, BP3, PPB, BPA)
 #
 # VarSelection_<date>.csv
 #   - this table contains 18 columns (9 statistics x 2 corr structures) and
-#     64 rows of 16 scenarios x 4 methods
+#     112 rows of 16 scenarios x 7 methods
 #
 # Figures 3 to 10 as PDFs
 #
-# ***internal function,  see master.R for master script***
+# ***internal function, see master.R for master script***
 #
 ##------------------------------------------------------------------------------
 
@@ -35,15 +36,21 @@ results_tables_plots <- function(
   res.obscorr.bart, mse.25.obscorr.bart, coverage.25.obscorr.bart,
   res.halfcorr.star, mse.25.halfcorr.star, coverage.25.halfcorr.star,
   res.obscorr.star, mse.25.obscorr.star, coverage.25.obscorr.star,
+  res.halfcorr.gamdp, mse.25.halfcorr.gamdp, coverage.25.halfcorr.gamdp,
+  res.obscorr.gamdp, mse.25.obscorr.gamdp, coverage.25.obscorr.gamdp,
+  res.halfcorr.gamts, mse.25.halfcorr.gamts, coverage.25.halfcorr.gamts,
+  res.obscorr.gamts, mse.25.obscorr.gamts, coverage.25.obscorr.gamts,
+  res.halfcorr.mars, mse.25.halfcorr.mars, coverage.25.halfcorr.mars,
+  res.obscorr.mars, mse.25.obscorr.mars, coverage.25.obscorr.mars,
   res.halfcorr.gam, mse.25.halfcorr.gam, coverage.25.halfcorr.gam,
   res.obscorr.gam, mse.25.obscorr.gam, coverage.25.obscorr.gam,
   res.halfcorr.lasso, 
   res.obscorr.lasso) {
   
   #load libraries if not loaded
-  require(ggplot2)      #version 2.2.1,  for plotting only
-  require(scales)       #version 0.5.0,  for plotting only
-  require(cowplot)      #version 0.9.4,  for plotting only
+  require(ggplot2)      #version 2.2.1, for plotting only
+  require(scales)       #version 0.5.0, for plotting only
+  require(cowplot)      #version 0.9.4, for plotting only
   
   #simulated data
   list2env(sim.data, envir = environment())
@@ -52,35 +59,47 @@ results_tables_plots <- function(
   source("global_constants.R", local = TRUE)
   
   #constants
-  N.methods<-4
+  N.methods<-7
   N.ptiles<-3
   
   ##----------------------------------------------------------------------------
   message("Preparing tables of results...")
   #table of MSEs
-  #array dims: N.scenarios, 3 percentiles x 4 methods, 4 true exposures
+  #array dims: N.scenarios, 3 percentiles x 7 methods, 4 true exposures
   tmp.mse.25 <- array(NaN, 
                       dim = c(N.scenarios, N.ptiles*N.methods, K.true), 
                       dimnames = list(scenario.names, c(
-                        "BKMR.25%", "BART.25%", "STAR.25%", "GAM.25%", 
-                        "BKMR.50%", "BART.50%", "STAR.50%", "GAM.50%", 
-                        "BKMR.75%", "BART.75%", "STAR.75%", "GAM.75%"), 
+                        "BKMR.25%", "BART.25%", "STAR.25%", 
+                        "GAMDP.25%", "GAMTS.25%", "MARS.25%", "GAM.25%", 
+                        "BKMR.50%", "BART.50%", "STAR.50%", 
+                        "GAMDP.50%", "GAMTS.50%", "MARS.50%", "GAM.50%", 
+                        "BKMR.75%", "BART.75%", "STAR.75%", 
+                        "GAMDP.75%", "GAMTS.75%", "MARS.75%", "GAM.75%"), 
                         x.true.names))
   for (corr_struct in c("obscorr", "halfcorr")) {
     counter = 0
     tmp.bkmr <- get(paste("mse.25.", corr_struct, ".bkmr", sep = ""))
     tmp.bart <- get(paste("mse.25.", corr_struct, ".bart", sep = ""))
     tmp.star <- get(paste("mse.25.", corr_struct, ".star", sep = ""))
+    tmp.gamdp <- get(paste("mse.25.", corr_struct, ".gamdp", sep = ""))
+    tmp.gamts <- get(paste("mse.25.", corr_struct, ".gamts", sep = ""))
+    tmp.mars <- get(paste("mse.25.", corr_struct, ".mars", sep = ""))
     tmp.gam <- get(paste("mse.25.", corr_struct, ".gam", sep = ""))
     for (name.x in x.true.names) {
       counter = counter + 1
       tmp.mse.25[, , name.x] <- cbind(
         tmp.bkmr[, counter*3-2], tmp.bart[, counter*3-2], 
-        tmp.star[, counter*3-2], tmp.gam[, counter*3-2], 
+        tmp.star[, counter*3-2], tmp.gamdp[, counter*3-2], 
+        tmp.gamts[, counter*3-2], tmp.mars[, counter*3-2], 
+        tmp.gam[, counter*3-2], 
         tmp.bkmr[, counter*3-1], tmp.bart[, counter*3-1], 
-        tmp.star[, counter*3-1], tmp.gam[, counter*3-1], 
+        tmp.star[, counter*3-1], tmp.gamdp[, counter*3-1],
+        tmp.gamts[, counter*3-1], tmp.mars[, counter*3-1],
+        tmp.gam[, counter*3-1],
         tmp.bkmr[, counter*3], tmp.bart[, counter*3], 
-        tmp.star[, counter*3], tmp.gam[, counter*3])
+        tmp.star[, counter*3], tmp.gamdp[, counter*3],
+        tmp.gamts[, counter*3], tmp.mars[, counter*3],
+        tmp.gam[, counter*3])
     }
     if (corr_struct == "obscorr") mse.25.obscorr <- tmp.mse.25
     if (corr_struct == "halfcorr") mse.25.halfcorr <- tmp.mse.25
@@ -88,7 +107,7 @@ results_tables_plots <- function(
   tmp.order <- c(seq(1, N.scenarios, N.erfn), 
                  seq(2, N.scenarios, N.erfn), 
                  seq(3, N.scenarios, N.erfn), 
-                 seq(4, N.scenarios, N.erfn)) #all linear,  then s-shape,  etc.
+                 seq(4, N.scenarios, N.erfn)) #all linear, then s-shape, etc.
   for (name.x in x.true.names) {
     write.table(mse.25.obscorr[tmp.order, , name.x], file = paste(
       "MSE25_OBSCORR_", format(Sys.Date(), "%Y%m%d"), ".csv", sep = ""), 
@@ -97,34 +116,47 @@ results_tables_plots <- function(
       "MSE25_HALFCORR_", format(Sys.Date(), "%Y%m%d"), ".csv", sep = ""), 
       sep = ",", append = T, col.names = NA)
   }
-  rm(counter, name.x, tmp.bkmr, tmp.bart, tmp.star, tmp.mse.25, tmp.order)
+  rm(counter, name.x, tmp.bkmr, tmp.bart, tmp.star, tmp.gamdp, tmp.gamts, 
+     tmp.mars, tmp.gam, tmp.mse.25, tmp.order)
   
   ##----------------------------------------------------------------------------
   #table of coverage proportions
-  #array dims: N.scenarios, 3 percentiles x 4 methods, 4 true exposures
+  #array dims: N.scenarios, 3 percentiles x 7 methods, 4 true exposures
   tmp.coverage.25 <- array(
     NaN, 
     dim = c(N.scenarios, N.ptiles*N.methods, K.true), 
     dimnames = list(scenario.names, 
-                    c("BKMR.25%", "BART.25%", "STAR.25%", "GAM.25%", 
-                      "BKMR.50%", "BART.50%", "STAR.50%", "GAM.50%", 
-                      "BKMR.75%", "BART.75%", "STAR.75%", "GAM.75%"), 
+                    c("BKMR.25%", "BART.25%", "STAR.25%", 
+                      "GAMDP.25%", "GAMTS.25%", "MARS.25%", "GAM.25%", 
+                      "BKMR.50%", "BART.50%", "STAR.50%", 
+                      "GAMDP.50%", "GAMTS.50%", "MARS.50%", "GAM.50%", 
+                      "BKMR.75%", "BART.75%", "STAR.75%", 
+                      "GAMDP.75%", "GAMTS.75%", "MARS.75%", "GAM.75%"), 
                     x.true.names))
   for (corr_struct in c("obscorr", "halfcorr")) {
     counter = 0
     tmp.bkmr <- get(paste("coverage.25.", corr_struct, ".bkmr", sep = ""))
     tmp.bart <- get(paste("coverage.25.", corr_struct, ".bart", sep = ""))
     tmp.star <- get(paste("coverage.25.", corr_struct, ".star", sep = ""))
+    tmp.gamdp <- get(paste("coverage.25.", corr_struct, ".gamdp", sep = ""))
+    tmp.gamts <- get(paste("coverage.25.", corr_struct, ".gamts", sep = ""))
+    tmp.mars <- get(paste("coverage.25.", corr_struct, ".mars", sep = ""))
     tmp.gam <- get(paste("coverage.25.", corr_struct, ".gam", sep = ""))
     for (name.x in x.true.names) {
       counter = counter + 1
       tmp.coverage.25[, , name.x] <- cbind(
         tmp.bkmr[, counter*3-2], tmp.bart[, counter*3-2], 
-        tmp.star[, counter*3-2], tmp.gam[, counter*3-2], 
+        tmp.star[, counter*3-2], tmp.gamdp[, counter*3-2], 
+        tmp.gamts[, counter*3-2], tmp.mars[, counter*3-2], 
+        tmp.gam[, counter*3-2], 
         tmp.bkmr[, counter*3-1], tmp.bart[, counter*3-1], 
-        tmp.star[, counter*3-1], tmp.gam[, counter*3-1], 
+        tmp.star[, counter*3-1], tmp.gamdp[, counter*3-1],
+        tmp.gamts[, counter*3-1], tmp.mars[, counter*3-1],
+        tmp.gam[, counter*3-1],
         tmp.bkmr[, counter*3], tmp.bart[, counter*3], 
-        tmp.star[, counter*3], tmp.gam[, counter*3])
+        tmp.star[, counter*3], tmp.gamdp[, counter*3],
+        tmp.gamts[, counter*3], tmp.mars[, counter*3],
+        tmp.gam[, counter*3])
     }
     if (corr_struct == "obscorr") coverage.25.propn.obscorr <- tmp.coverage.25
     if (corr_struct == "halfcorr") coverage.25.propn.halfcorr <- tmp.coverage.25
@@ -132,7 +164,7 @@ results_tables_plots <- function(
   tmp.order <- c(seq(1, N.scenarios, N.erfn), 
                  seq(2, N.scenarios, N.erfn), 
                  seq(3, N.scenarios, N.erfn), 
-                 seq(4, N.scenarios, N.erfn)) #all linear,  then s-shape,  etc.
+                 seq(4, N.scenarios, N.erfn)) #all linear, then s-shape, etc.
   for (name.x in x.true.names) {
     write.table(coverage.25.propn.obscorr[tmp.order, , name.x], file = paste(
       "Coverage25_OBSCORR_", format(Sys.Date(), "%Y%m%d"), ".csv", sep = ""), 
@@ -141,7 +173,8 @@ results_tables_plots <- function(
       "Coverage25_HALFCORR_", format(Sys.Date(), "%Y%m%d"), ".csv", sep = ""), 
       sep = ",", append = T, col.names = NA)
   }
-  rm(counter, name.x, tmp.bkmr, tmp.bart, tmp.star, tmp.coverage.25, tmp.order)
+  rm(counter, name.x, tmp.bkmr, tmp.bart, tmp.star, tmp.gamdp, tmp.gamts, 
+     tmp.mars, tmp.gam, tmp.coverage.25, tmp.order)
   
   ##----------------------------------------------------------------------------
   #table of variable selection results
@@ -161,7 +194,8 @@ results_tables_plots <- function(
   rownames(vs.table) <- as.vector(
     sapply(scenario.names, 
            FUN = function(x) paste(x, 
-                                   c("bkmr", "bart", "star", "lasso"), 
+                                   c("bkmr", "bart", "star", "gamdp", 
+                                     "gamts", "mars", "lasso"), 
                                    sep = ".")))
   counter = 0
   for (vs.stat in c("sens", "spec", "FDR", "FPR", "NPV", "F1", 
@@ -171,18 +205,24 @@ results_tables_plots <- function(
       rbind(colMeans(res.halfcorr.bkmr[[vs.stat]], na.rm = T), 
             colMeans(res.halfcorr.bart[[vs.stat]], na.rm = T), 
             colMeans(res.halfcorr.star[[vs.stat]], na.rm = T), 
+            colMeans(res.halfcorr.gamdp[[vs.stat]], na.rm = T), 
+            colMeans(res.halfcorr.gamts[[vs.stat]], na.rm = T), 
+            colMeans(res.halfcorr.mars[[vs.stat]], na.rm = T), 
             colMeans(res.halfcorr.lasso[[vs.stat]], na.rm = T)))
     vs.table[, seq(2, N.stats*N.corr, N.corr)[counter]] <- as.vector(
       rbind(colMeans(res.obscorr.bkmr[[vs.stat]], na.rm = T), 
             colMeans(res.obscorr.bart[[vs.stat]], na.rm = T), 
             colMeans(res.obscorr.star[[vs.stat]], na.rm = T), 
+            colMeans(res.obscorr.gamdp[[vs.stat]], na.rm = T), 
+            colMeans(res.obscorr.gamts[[vs.stat]], na.rm = T), 
+            colMeans(res.obscorr.mars[[vs.stat]], na.rm = T), 
             colMeans(res.obscorr.lasso[[vs.stat]], na.rm = T)))
   }
   #re-arrange rows:
   tmp.order <- c(seq(1, N.scenarios, N.erfn), 
                  seq(2, N.scenarios, N.erfn), 
                  seq(3, N.scenarios, N.erfn), 
-                 seq(4, N.scenarios, N.erfn)) #all linear,  then s-shape,  etc.
+                 seq(4, N.scenarios, N.erfn)) #all linear, then s-shape, etc.
   vs.table <- vs.table[as.vector(
     t(matrix(c(1:(N.scenarios*N.methods)), 
              N.scenarios, N.methods, byrow = T)[tmp.order, ])), ]
@@ -196,7 +236,7 @@ results_tables_plots <- function(
   ##VAR SELECTION RESULTS PLOTS
 
   message("Preparing Figures 3 to 10...")
-  #variable selection results plots data.frame,  means only
+  #variable selection results plots data.frame, means only
   N.stats<-8
   vs.plots.df <- rbind(vs.table[, seq(1, N.stats*N.corr, N.corr)], 
                        vs.table[, seq(2, N.stats*N.corr, N.corr)])
@@ -204,10 +244,10 @@ results_tables_plots <- function(
                              "F1", "rank_correct_gr", "prop_rank_correct_gr")
   vs.plots.df <- as.data.frame(vs.plots.df)
   vs.plots.df$mtype <- factor(
-    rep(rep(c(rep("J  =  6,  low sparsity", N.snr*N.methods), 
-              rep("J  =  12,  high sparsity", N.snr*N.methods)), 
+    rep(rep(c(rep("J = 8, low sparsity", N.snr*N.methods), 
+              rep("J = 17, high sparsity", N.snr*N.methods)), 
             N.erfn), N.corr), 
-    levels = c("J  =  6,  low sparsity", "J  =  12,  high sparsity"))
+    levels = c("J = 8, low sparsity", "J = 17, high sparsity"))
   vs.plots.df$SNR <- factor(
     rep(rep(c(rep("Low", N.methods), rep("High", N.methods)), 
             N.m*N.erfn), N.corr), levels = c("High", "Low"))
@@ -219,14 +259,15 @@ results_tables_plots <- function(
     levels = c("Linear", "S-shaped", "Inverse-U-shaped\n(quadratic)", 
                "Inverse-U-shaped\n(asymmetric)"))
   vs.plots.df$Method <- factor(
-    rep(rep(c("BKMR", "BART", "BSTARSS", "LASSO"), N.m*N.snr*N.erfn), N.corr), 
-    levels = c("BKMR", "BART", "BSTARSS", "LASSO"))
+    rep(rep(c("BKMR", "BART", "BSTARSS", "GAMDP", "GAMTS", "MARS", "LASSO"), 
+            N.m*N.snr*N.erfn), N.corr), 
+    levels = c("BKMR", "BART", "BSTARSS", "GAMDP", "GAMTS", "MARS", "LASSO"))
   vs.plots.df$corr <- factor(c(rep("Half", N.m*N.snr*N.erfn*N.methods), 
                                rep("Observed", N.m*N.snr*N.erfn*N.methods)), 
                              levels = c("Observed", "Half"))
-  vs.plots.df$Precision <- 1-vs.plots.df$FDR
+  vs.plots.df$PPV <- 1-vs.plots.df$FDR
   
-  #variable selection results plots data.frame,  all results
+  #variable selection results plots data.frame, all results
   N.stats<-8
   vs.plots.df.long <- matrix(NaN, N.scenarios*N.methods*reps*N.corr, N.stats) 
   colnames(vs.plots.df.long) <- c("Sensitivity", "Specificity", 
@@ -238,15 +279,20 @@ results_tables_plots <- function(
     counter = counter + 1
     vs.plots.df.long[, counter] <- as.vector(
       rbind(res.halfcorr.bkmr[[vs.stat]], res.halfcorr.bart[[vs.stat]], 
-            res.halfcorr.star[[vs.stat]], res.halfcorr.lasso[[vs.stat]], 
+            res.halfcorr.star[[vs.stat]], res.halfcorr.gamdp[[vs.stat]], 
+            res.halfcorr.gamts[[vs.stat]], res.halfcorr.mars[[vs.stat]], 
+            res.halfcorr.lasso[[vs.stat]], 
             res.obscorr.bkmr[[vs.stat]], res.obscorr.bart[[vs.stat]], 
-            res.obscorr.star[[vs.stat]], res.obscorr.lasso[[vs.stat]]))
+            res.obscorr.star[[vs.stat]], res.obscorr.gamdp[[vs.stat]], 
+            res.obscorr.gamts[[vs.stat]], res.obscorr.mars[[vs.stat]], 
+            res.obscorr.lasso[[vs.stat]]))
   }
   vs.plots.df.long <- as.data.frame(vs.plots.df.long)
   vs.plots.df.long$Scenario <- rep(
     as.vector(sapply(
       rep(scenario.names, each = N.corr), 
-      FUN = function(x) paste(x, c("bkmr", "bart", "star", "lasso"), 
+      FUN = function(x) paste(x, c("bkmr", "bart", "star", "gamdp", 
+                                   "gamts", "mars", "lasso"), 
                               sep = "."))), each = reps)
   vs.plots.df.long$corr <- factor(
     rep(c(rep("Half", reps*N.methods), 
@@ -256,16 +302,19 @@ results_tables_plots <- function(
     rep(c(rep(c(rep("BKMR", reps), 
                 rep("BART", reps), 
                 rep("BSTARSS", reps), 
+                rep("GAMDP", reps), 
+                rep("GAMTS", reps), 
+                rep("MARS", reps), 
                 rep("LASSO", reps)), N.corr)), N.scenarios), 
-    levels = c("BKMR", "BART", "BSTARSS", "LASSO"))
+    levels = c("BKMR", "BART", "BSTARSS", "GAMDP", "GAMTS", "MARS", "LASSO"))
   vs.plots.df.long$mtype <- ""
   vs.plots.df.long$mtype[grep("^m1", vs.plots.df.long$Scenario)] <- 
-    "J  =  6,  low sparsity"
+    "J = 8, low sparsity"
   vs.plots.df.long$mtype[grep("^m2", vs.plots.df.long$Scenario)] <- 
-    "J  =  12,  high sparsity"
+    "J = 17, high sparsity"
   vs.plots.df.long$mtype <- factor(
     vs.plots.df.long$mtype, 
-    levels = c("J  =  6,  low sparsity", "J  =  12,  high sparsity"))
+    levels = c("J = 8, low sparsity", "J = 17, high sparsity"))
   vs.plots.df.long$SNR <- ""
   vs.plots.df.long$SNR[grep("*loSNR", vs.plots.df.long$Scenario)] <- "Low"
   vs.plots.df.long$SNR[grep("*hiSNR", vs.plots.df.long$Scenario)] <- "High"
@@ -292,10 +341,15 @@ results_tables_plots <- function(
     facet_grid(mtype ~ erfn) + 
     geom_point(aes(shape = SNR), size = 4, stroke = 1) + 
     geom_line(aes(linetype = corr), size = 1.1) + 
-    scale_colour_discrete(name = "Method") + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                          "#8CD17D", "#BDDDF3", "#8C54BF")) + 
     scale_shape_manual(name = "Signal-to-noise \nratio",  values = c(16, 2)) + 
     scale_linetype_discrete(name = "Correlation \nstructure") + 
     scale_x_continuous(breaks = c(0.25, 0.5, 0.75, 1), limits = c(0.2, 1)) + 
+    guides(colour = guide_legend(order = 1),
+           shape = guide_legend(order = 2),
+           line = guide_legend(order = 3)) +
     theme_bw() + 
     theme(text = element_text(size = 16), axis.text = element_text(size = 16), 
           strip.text.x = element_text(size = 16), 
@@ -304,24 +358,30 @@ results_tables_plots <- function(
   ggsave("Figure_3.pdf", plot = vs.plot.ySens_xSpec, 
          height = 752/72, width = 1335/72)
   
-  #FIGURE 4: plot of y-axis = prec vs. x-axis = NPV
-  vs.plot.yPrec_xNPV <- ggplot(
-    vs.plots.df, aes(NPV, Precision, color = factor(Method))) + 
+  #FIGURE 4: plot of y-axis = PPV vs. x-axis = NPV
+  vs.plot.yPPV_xNPV <- ggplot(
+    vs.plots.df, aes(NPV, PPV, color = factor(Method))) + 
     facet_grid(mtype ~ erfn) + 
     geom_point(aes(shape = SNR), size = 4, stroke = 1) + 
     geom_line(aes(linetype = corr), size = 1.1) + 
-    scale_colour_discrete(name = "Method") + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3", "#8C54BF")) + 
     scale_shape_manual(name = "Signal-to-noise \nratio",  values = c(16, 2)) + 
     scale_linetype_discrete(name = "Correlation \nstructure") + 
     scale_y_continuous(breaks = c(0.25, 0.5, 0.75, 1)) + 
-    scale_x_continuous(breaks = c(0.25, 0.5, 0.75, 1), limits = c(0.2, 1)) + 
+    scale_x_continuous(breaks = c(0.5, 0.75, 1), limits = c(0.45, 1)) + 
+    ylab("Positive predictive value") + 
     xlab("Negative predictive value") + 
+    guides(colour = guide_legend(order = 1),
+           shape = guide_legend(order = 2),
+           line = guide_legend(order = 3)) +
     theme_bw() + 
     theme(text = element_text(size = 16), axis.text = element_text(size = 16), 
           strip.text.x = element_text(size = 16), 
           strip.text.y = element_text(size = 16))
-  print(vs.plot.yPrec_xNPV)
-  ggsave("Figure_4.pdf", plot = vs.plot.yPrec_xNPV, 
+  print(vs.plot.yPPV_xNPV)
+  ggsave("Figure_4.pdf", plot = vs.plot.yPPV_xNPV, 
          height = 752/72, width = 1335/72)
   
   #FIGURE 5: boxplots of F1
@@ -336,8 +396,13 @@ results_tables_plots <- function(
     stat_summary(fun.y = median, geom = "point", shape = 95, size = 3, 
                  stroke = 3, position = position_dodge(width = 0.7)) + 
     ylab("F1-statistic") + 
-    xlab("Correlation structure (observed,  half) and 
-         signal-to-noise ratio (low,  high) categories") + 
+    xlab("Correlation structure (observed, half) and signal-to-noise ratio (low, high) categories") + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3", "#8C54BF")) + 
+    scale_fill_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3", "#8C54BF")) + 
     theme_bw() + 
     theme(text = element_text(size = 16), axis.text = element_text(size = 16), 
           strip.text.x = element_text(size = 16), 
@@ -350,17 +415,17 @@ results_tables_plots <- function(
   
   #FIGURE 6: plot of rank_correct_gr
   vs.plot.rank_correct_gr <- ggplot(
-    subset(vs.plots.df, ((Method %in% c("BKMR", "BART", "BSTARSS")))), 
+    subset(vs.plots.df, ((Method %in% c("BKMR", "BART", "BSTARSS", 
+                                        "GAMDP", "GAMTS", "MARS")))), 
     aes(interaction(corr, SNR), rank_correct_gr, color = factor(Method))) + 
     facet_grid(mtype ~ erfn) + 
     geom_point(size = 4, stroke = 1, position = position_dodge(width = .1)) + 
-    xlab("Correlation structure (observed,  half) and 
-         signal-to-noise ratio (low,  high) categories") + 
-    ylab("Proportion of replications with all outcome-associated\nexposures 
-         ranked above unassociated exposures") + 
+    xlab("Correlation structure (observed, half) and signal-to-noise ratio (low, high) categories") + 
+    ylab("Proportion of replications with all outcome-associated\nexposures ranked above unassociated exposures") + 
     scale_y_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1), limits = c(0, 0.9)) + 
-    scale_color_manual(name = "Method", 
-                       values = c("#F8766D", "#7CAE00", "#00BFC4")) + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3")) + 
     theme_bw() + 
     theme(text = element_text(size = 16), axis.text = element_text(size = 16), 
           strip.text.x = element_text(size = 16), 
@@ -377,20 +442,20 @@ results_tables_plots <- function(
     sqrt(vs.plots.df$prop_rank_correct_gr*
            (1-vs.plots.df$prop_rank_correct_gr)/(K.true*reps))
   vs.plot.prop_rank_correct_gr_ci <- ggplot(
-    subset(vs.plots.df, ((Method %in% c("BKMR", "BART", "BSTARSS")))), 
+    subset(vs.plots.df, ((Method %in% c("BKMR", "BART", "BSTARSS", 
+                                        "GAMDP", "GAMTS", "MARS")))), 
     aes(interaction(corr, SNR), prop_rank_correct_gr, color = factor(Method))) + 
     facet_grid(mtype ~ erfn) + 
     geom_point(size = 4, stroke = 1, position = position_dodge(width = .3)) + 
     geom_errorbar(aes(ymin = prop_rank_correct_gr-prop_rank_correct_gr_ci, 
                       ymax = prop_rank_correct_gr + prop_rank_correct_gr_ci), 
                   width = .4, position = position_dodge(width = .3)) + 
-    xlab("Correlation structure (observed,  half) and 
-         signal-to-noise ratio (low,  high) categories") + 
-    ylab("Mean proportion of outcome-associated\nexposures 
-         ranked above unassociated exposures") + 
-    scale_y_continuous(breaks = c(0.25, 0.5, 0.75, 1), limits = c(0.35, 1)) + 
-    scale_color_manual(name = "Method", 
-                       values = c("#F8766D", "#7CAE00", "#00BFC4")) + 
+    xlab("Correlation structure (observed, half) and signal-to-noise ratio (low, high) categories") + 
+    ylab("Mean proportion of outcome-associated\nexposures ranked above unassociated exposures") + 
+    scale_y_continuous(breaks = c(0.25, 0.5, 0.75, 1), limits = c(0.15, 1)) + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3")) + 
     theme_bw() + 
     theme(text = element_text(size = 16), axis.text = element_text(size = 16), 
           strip.text.x = element_text(size = 16), 
@@ -405,33 +470,46 @@ results_tables_plots <- function(
   ##----------------------------------------------------------------------------
   ##MSE AND COVERAGE PLOTS 
   
+  tmp.25<-c("BKMR.25%", "BART.25%", "STAR.25%", 
+  "GAMDP.25%", "GAMTS.25%", "MARS.25%", "GAM.25%") 
+  tmp.50<-c("BKMR.50%", "BART.50%", "STAR.50%", 
+  "GAMDP.50%", "GAMTS.50%", "MARS.50%", "GAM.50%") 
+  tmp.75<-c("BKMR.75%", "BART.75%", "STAR.75%", 
+  "GAMDP.75%", "GAMTS.75%", "MARS.75%", "GAM.75%")
+  
   #MSE/oracle_MSE dataframe for plotting
   mse_propgam.25.obscorr <- mse.25.obscorr
   for (name.x in x.true.names) {
-    mse_propgam.25.obscorr[, c(1:4), name.x] <- 
-      mse_propgam.25.obscorr[, c(1:4), name.x]/
+    mse_propgam.25.obscorr[, tmp.25, name.x] <- 
+      mse_propgam.25.obscorr[, tmp.25, name.x]/
       mse_propgam.25.obscorr[, "GAM.25%", name.x]
-    mse_propgam.25.obscorr[, c(5:8), name.x] <- 
-      mse_propgam.25.obscorr[, c(5:8), name.x]/
+    mse_propgam.25.obscorr[, tmp.50, name.x] <- 
+      mse_propgam.25.obscorr[, tmp.50, name.x]/
       mse_propgam.25.obscorr[, "GAM.50%", name.x]
-    mse_propgam.25.obscorr[, c(9:12), name.x] <- 
-      mse_propgam.25.obscorr[, c(9:12), name.x]/
+    mse_propgam.25.obscorr[, tmp.75, name.x] <- 
+      mse_propgam.25.obscorr[, tmp.75, name.x]/
       mse_propgam.25.obscorr[, "GAM.75%", name.x]
   }
-  mse_propgam.25.obscorr <- mse_propgam.25.obscorr[, -c(4, 8, 12), ] #remove GAM
+  mse_propgam.25.obscorr <- 
+    mse_propgam.25.obscorr[, -c(which(
+      c(tmp.25, tmp.50, tmp.75) %in% 
+        c("GAM.25%", "GAM.50%", "GAM.75%"))), ] #remove GAM
   mse_propgam.25.halfcorr <- mse.25.halfcorr
   for (name.x in x.true.names) {
-    mse_propgam.25.halfcorr[, c(1:4), name.x] <- 
-      mse_propgam.25.halfcorr[, c(1:4), name.x]/
+    mse_propgam.25.halfcorr[, tmp.25, name.x] <- 
+      mse_propgam.25.halfcorr[, tmp.25, name.x]/
       mse_propgam.25.halfcorr[, "GAM.25%", name.x]
-    mse_propgam.25.halfcorr[, c(5:8), name.x] <- 
-      mse_propgam.25.halfcorr[, c(5:8), name.x]/
+    mse_propgam.25.halfcorr[, tmp.50, name.x] <- 
+      mse_propgam.25.halfcorr[, tmp.50, name.x]/
       mse_propgam.25.halfcorr[, "GAM.50%", name.x]
-    mse_propgam.25.halfcorr[, c(9:12), name.x] <- 
-      mse_propgam.25.halfcorr[, c(9:12), name.x]/
+    mse_propgam.25.halfcorr[, tmp.75, name.x] <- 
+      mse_propgam.25.halfcorr[, tmp.75, name.x]/
       mse_propgam.25.halfcorr[, "GAM.75%", name.x]
   }
-  mse_propgam.25.halfcorr <- mse_propgam.25.halfcorr[, -c(4, 8, 12), ]
+  mse_propgam.25.halfcorr <- 
+    mse_propgam.25.halfcorr[, -c(which(
+      c(tmp.25, tmp.50, tmp.75) %in% 
+        c("GAM.25%", "GAM.50%", "GAM.75%"))), ]
   #dataframe
   mse_propgam.plots.df.long <- rbind(
     as.data.frame.table(mse_propgam.25.halfcorr), 
@@ -451,9 +529,15 @@ results_tables_plots <- function(
     grep("^BART", mse_propgam.plots.df.long$Method.Ptile)] <- "BART"
   mse_propgam.plots.df.long$Method[
     grep("^STAR", mse_propgam.plots.df.long$Method.Ptile)] <- "BSTARSS"
+  mse_propgam.plots.df.long$Method[
+    grep("^GAMDP", mse_propgam.plots.df.long$Method.Ptile)] <- "GAMDP"
+  mse_propgam.plots.df.long$Method[
+    grep("^GAMTS", mse_propgam.plots.df.long$Method.Ptile)] <- "GAMTS"
+  mse_propgam.plots.df.long$Method[
+    grep("^MARS", mse_propgam.plots.df.long$Method.Ptile)] <- "MARS"
   mse_propgam.plots.df.long$Method <- factor(
     mse_propgam.plots.df.long$Method, 
-    levels = c("BKMR", "BART", "BSTARSS", "GAM"))
+    levels = c("BKMR", "BART", "BSTARSS", "GAMDP", "GAMTS", "MARS", "GAM"))
   mse_propgam.plots.df.long$Percentile <- ""
   mse_propgam.plots.df.long$Percentile[
     grep("*25", mse_propgam.plots.df.long$Method.Ptile)] <- "25%"
@@ -465,11 +549,11 @@ results_tables_plots <- function(
     mse_propgam.plots.df.long$Percentile, levels = c("25%", "50%", "75%"))
   mse_propgam.plots.df.long$mtype <- ""
   mse_propgam.plots.df.long$mtype[
-    grep("^m1", mse_propgam.plots.df.long$Scenario)] <- "J  =  6"
+    grep("^m1", mse_propgam.plots.df.long$Scenario)] <- "J = 8, low sparsity"
   mse_propgam.plots.df.long$mtype[
-    grep("^m2", mse_propgam.plots.df.long$Scenario)] <- "J  =  12"
+    grep("^m2", mse_propgam.plots.df.long$Scenario)] <- "J = 17, high sparsity"
   mse_propgam.plots.df.long$mtype <- factor(
-    mse_propgam.plots.df.long$mtype, levels = c("J  =  6", "J  =  12"))
+    mse_propgam.plots.df.long$mtype, levels = c("J = 8, low sparsity", "J = 17, high sparsity"))
   mse_propgam.plots.df.long$SNR <- ""
   mse_propgam.plots.df.long$SNR[
     grep("*loSNR", mse_propgam.plots.df.long$Scenario)] <- "Low"
@@ -494,7 +578,7 @@ results_tables_plots <- function(
                "Inverse-U-shaped\n(asymmetric)"))
   
   ##----------------------------------------------------------------------------
-  #FIGURE 8: all percentiles on same plot,  mean of all exposures
+  #FIGURE 8: all percentiles on same plot, mean of all exposures
   mse_propgam.plot <- ggplot(
     subset(mse_propgam.plots.df.long, 
            ((Exposure %in% c("MPB", "BP3", "PPB", "BPA")))), 
@@ -521,8 +605,7 @@ results_tables_plots <- function(
                        (Percentile %in% c("75%")))), 
       fun.y = mean, geom = "point", size = 4, 
       position = position_dodge(width = 0.5)) + 
-    xlab("Correlation structure (observed,  half) and 
-         signal-to-noise ratio (low,  high) categories") + 
+    xlab("Correlation structure (observed, half) and signal-to-noise ratio (low, high) categories") + 
     ylab("Ratio of method to oracle mean-squared error") + 
     geom_hline(yintercept = 1, linetype = 2) + 
     theme_bw() + 
@@ -530,8 +613,9 @@ results_tables_plots <- function(
           strip.text.x = element_text(size = 16), 
           strip.text.y = element_text(size = 16), 
           axis.text.x = element_text(size = 13)) + 
-    scale_color_manual(name = "Method", 
-                       values = c("#F8766D", "#7CAE00", "#00BFC4")) + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3")) + 
     scale_x_discrete(labels = c("Obs., \nHigh\n", "Half, \nHigh\n", 
                                 "Obs., \nLow\n", "Half, \nLow\n")) + 
     scale_shape_manual(name = "Percentile", c("25%", "50%", "75%"), 
@@ -548,7 +632,10 @@ results_tables_plots <- function(
   colnames(coverage.plots.df.long) <- 
     c("Scenario", "Method.Ptile", "Exposure", "Coverage")
   coverage.plots.df.long <- 
-    coverage.plots.df.long[-grep("^GAM", coverage.plots.df.long$Method.Ptile), ]  #remove GAM entries
+    coverage.plots.df.long[
+      -c(grep("GAM.25%", coverage.plots.df.long$Method.Ptile),
+         grep("GAM.50%", coverage.plots.df.long$Method.Ptile),
+         grep("GAM.75%", coverage.plots.df.long$Method.Ptile)), ]  #remove GAM entries
   coverage.plots.df.long$Exposure <- factor(
     coverage.plots.df.long$Exposure, levels = x.true.names)
   coverage.plots.df.long$corr <- factor(
@@ -562,8 +649,15 @@ results_tables_plots <- function(
     grep("^BART", coverage.plots.df.long$Method.Ptile)] <- "BART"
   coverage.plots.df.long$Method[
     grep("^STAR", coverage.plots.df.long$Method.Ptile)] <- "BSTARSS"
+  coverage.plots.df.long$Method[
+    grep("^GAMDP", coverage.plots.df.long$Method.Ptile)] <- "GAMDP"
+  coverage.plots.df.long$Method[
+    grep("^GAMTS", coverage.plots.df.long$Method.Ptile)] <- "GAMTS"
+  coverage.plots.df.long$Method[
+    grep("^MARS", coverage.plots.df.long$Method.Ptile)] <- "MARS"
   coverage.plots.df.long$Method <- factor(
-    coverage.plots.df.long$Method, levels = c("BKMR", "BART", "BSTARSS", "GAM"))
+    coverage.plots.df.long$Method, levels = c("BKMR", "BART", "BSTARSS", 
+                                              "GAMDP", "GAMTS", "MARS", "GAM"))
   coverage.plots.df.long$Percentile <- ""
   coverage.plots.df.long$Percentile[
     grep("*25", coverage.plots.df.long$Method.Ptile)] <- "25%"
@@ -575,11 +669,12 @@ results_tables_plots <- function(
     coverage.plots.df.long$Percentile, levels = c("25%", "50%", "75%"))
   coverage.plots.df.long$mtype <- ""
   coverage.plots.df.long$mtype[
-    grep("^m1", coverage.plots.df.long$Scenario)] <- "J  =  6"
+    grep("^m1", coverage.plots.df.long$Scenario)] <- "J = 8, low sparsity"
   coverage.plots.df.long$mtype[
-    grep("^m2", coverage.plots.df.long$Scenario)] <- "J  =  12"
+    grep("^m2", coverage.plots.df.long$Scenario)] <- "J = 17, high sparsity"
   coverage.plots.df.long$mtype <- factor(
-    coverage.plots.df.long$mtype, levels = c("J  =  6", "J  =  12"))
+    coverage.plots.df.long$mtype, levels = c("J = 8, low sparsity", 
+                                             "J = 17, high sparsity"))
   coverage.plots.df.long$SNR <- ""
   coverage.plots.df.long$SNR[
     grep("*loSNR", coverage.plots.df.long$Scenario)] <- "Low"
@@ -604,7 +699,7 @@ results_tables_plots <- function(
                "Inverse-U-shaped\n(asymmetric)"))
   
   ##----------------------------------------------------------------------------
-  #FIGURE 9: all percentiles on same plot,  mean of all exposures
+  #FIGURE 9: all percentiles on same plot, mean of all exposures
   coverage.plot <- ggplot(
     subset(coverage.plots.df.long, 
            ((Exposure %in% c("MPB", "BP3", "PPB", "BPA")))), 
@@ -631,8 +726,7 @@ results_tables_plots <- function(
                        (Percentile %in% c("75%")))), 
       fun.y = mean, geom = "point", size = 4, 
       position = position_dodge(width = 0.5)) + 
-    xlab("Correlation structure (observed,  half) and 
-         signal-to-noise ratio (low,  high) categories") + 
+    xlab("Correlation structure (observed, half) and signal-to-noise ratio (low, high) categories") + 
     ylab("Coverage") + 
     geom_hline(yintercept = 0.9, linetype = 2) + 
     theme_bw() + 
@@ -640,8 +734,9 @@ results_tables_plots <- function(
           strip.text.x = element_text(size = 16), 
           strip.text.y = element_text(size = 16), 
           axis.text.x = element_text(size = 13)) + 
-    scale_color_manual(name = "Method", 
-                       values = c("#F8766D", "#7CAE00", "#00BFC4")) + 
+    scale_colour_manual(name = "Method", 
+                        values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                                   "#8CD17D", "#BDDDF3")) + 
     scale_x_discrete(labels = c("Obs., \nHigh\n", "Half, \nHigh\n", 
                                 "Obs., \nLow\n", "Half, \nLow\n")) + 
     scale_shape_manual(name = "Percentile", c("25%", "50%", "75%"), 
@@ -672,7 +767,7 @@ results_tables_plots <- function(
   true.erc.plots.df$Percentile[grep("*90", true.erc.plots.df$Ptile)] <- 90
   true.erc.plots.df$Percentile[grep("*100", true.erc.plots.df$Ptile)] <- 100
   true.erc.plots.df$corr <- factor(
-    c(rep("Observed", N.stats*reps*N.scenarios), 
+    c(rep("Observed", N.stats*reps*N.scenarios), #N.stats*reps*N.erfn*N.snr*N.m
       rep("Half", N.stats*reps*N.scenarios)),
     levels = c("Observed", "Half"))
   levels(true.erc.plots.df$erfn) <- c(
@@ -681,14 +776,14 @@ results_tables_plots <- function(
   true.erc.plots.df <- rbind(true.erc.plots.df, true.erc.plots.df, 
                              true.erc.plots.df, true.erc.plots.df)
   true.erc.plots.df$mtype <- factor(
-    c(rep("J  =  6,  low", N.stats*reps*N.corr*N.snr*N.erfn*N.methods), 
-      rep("J  =  12,  high", N.stats*reps*N.corr*N.snr*N.erfn*N.methods)), 
-    levels = c("J  =  6,  low", "J  =  12,  high"))
+    c(rep("J = 8, low", N.stats*reps*N.corr*N.erfn*N.m*K.true), 
+      rep("J = 17, high", N.stats*reps*N.corr*N.erfn*N.m*K.true)), 
+    levels = c("J = 8, low", "J = 17, high"))
   true.erc.plots.df$SNR <- factor(
-    c(rep("High", N.stats*reps*N.m*N.erfn*N.methods), 
-      rep("Low", N.stats*reps*N.m*N.erfn*N.methods), 
-      rep("High", N.stats*reps*N.m*N.erfn*N.methods), 
-      rep("Low", N.stats*reps*N.m*N.erfn*N.methods)), 
+    c(rep("High", N.stats*reps*N.m*N.erfn*K.true), 
+      rep("Low", N.stats*reps*N.m*N.erfn*K.true), 
+      rep("High", N.stats*reps*N.m*N.erfn*K.true), 
+      rep("Low", N.stats*reps*N.m*N.erfn*K.true)), 
     levels = c("High", "Low"))
   #add x-values at percentiles
   tmp.df <- rbind(
@@ -710,6 +805,12 @@ results_tables_plots <- function(
       as.data.frame.table(res.obscorr.bart$erc.10[, , name.x, , "point"]), 
       as.data.frame.table(res.halfcorr.star$erc.10[, , name.x, , "point"]), 
       as.data.frame.table(res.obscorr.star$erc.10[, , name.x, , "point"]), 
+      as.data.frame.table(res.halfcorr.gamdp$erc.10[, , name.x, , "point"]), 
+      as.data.frame.table(res.obscorr.gamdp$erc.10[, , name.x, , "point"]),
+      as.data.frame.table(res.halfcorr.gamts$erc.10[, , name.x, , "point"]), 
+      as.data.frame.table(res.obscorr.gamts$erc.10[, , name.x, , "point"]),
+      as.data.frame.table(res.halfcorr.mars$erc.10[, , name.x, , "point"]), 
+      as.data.frame.table(res.obscorr.mars$erc.10[, , name.x, , "point"]),
       as.data.frame.table(res.halfcorr.gam$erc.10[, , name.x, , "point"]), 
       as.data.frame.table(res.obscorr.gam$erc.10[, , name.x, , "point"]))
     if (name.x == x.true.names[1]) {
@@ -728,6 +829,12 @@ results_tables_plots <- function(
       as.data.frame.table(res.obscorr.bart$erc.10[, , name.x, , "loCI"]), 
       as.data.frame.table(res.halfcorr.star$erc.10[, , name.x, , "loCI"]), 
       as.data.frame.table(res.obscorr.star$erc.10[, , name.x, , "loCI"]), 
+      as.data.frame.table(res.halfcorr.gamdp$erc.10[, , name.x, , "loCI"]), 
+      as.data.frame.table(res.obscorr.gamdp$erc.10[, , name.x, , "loCI"]),
+      as.data.frame.table(res.halfcorr.gamts$erc.10[, , name.x, , "loCI"]), 
+      as.data.frame.table(res.obscorr.gamts$erc.10[, , name.x, , "loCI"]),
+      as.data.frame.table(res.halfcorr.mars$erc.10[, , name.x, , "loCI"]), 
+      as.data.frame.table(res.obscorr.mars$erc.10[, , name.x, , "loCI"]),
       as.data.frame.table(res.halfcorr.gam$erc.10[, , name.x, , "loCI"]), 
       as.data.frame.table(res.obscorr.gam$erc.10[, , name.x, , "loCI"]))
     tmp.df.hiCI <- rbind(
@@ -737,6 +844,12 @@ results_tables_plots <- function(
       as.data.frame.table(res.obscorr.bart$erc.10[, , name.x, , "hiCI"]), 
       as.data.frame.table(res.halfcorr.star$erc.10[, , name.x, , "hiCI"]), 
       as.data.frame.table(res.obscorr.star$erc.10[, , name.x, , "hiCI"]), 
+      as.data.frame.table(res.halfcorr.gamdp$erc.10[, , name.x, , "hiCI"]), 
+      as.data.frame.table(res.obscorr.gamdp$erc.10[, , name.x, , "hiCI"]),
+      as.data.frame.table(res.halfcorr.gamts$erc.10[, , name.x, , "hiCI"]), 
+      as.data.frame.table(res.obscorr.gamts$erc.10[, , name.x, , "hiCI"]),
+      as.data.frame.table(res.halfcorr.mars$erc.10[, , name.x, , "hiCI"]), 
+      as.data.frame.table(res.obscorr.mars$erc.10[, , name.x, , "hiCI"]),
       as.data.frame.table(res.halfcorr.gam$erc.10[, , name.x, , "hiCI"]), 
       as.data.frame.table(res.obscorr.gam$erc.10[, , name.x, , "hiCI"]))
     curve.plots.df[[paste0("Y.loCI.", name.x)]] <- tmp.df.loCI$Freq
@@ -751,8 +864,11 @@ results_tables_plots <- function(
     c(rep("BKMR", N.stats*reps*N.scenarios*N.corr), 
       rep("BART", N.stats*reps*N.scenarios*N.corr), 
       rep("BSTARSS", N.stats*reps*N.scenarios*N.corr), 
+      rep("GAMDP", N.stats*reps*N.scenarios*N.corr), 
+      rep("GAMTS", N.stats*reps*N.scenarios*N.corr), 
+      rep("MARS", N.stats*reps*N.scenarios*N.corr), 
       rep("GAM", N.stats*reps*N.scenarios*N.corr)), 
-    levels = c("BKMR", "BART", "BSTARSS", "GAM"))
+    levels = c("BKMR", "BART", "BSTARSS", "GAMDP", "GAMTS", "MARS", "GAM"))
   curve.plots.df$Percentile <- NaN
   curve.plots.df$Percentile[grep("*min", curve.plots.df$Ptile)] <- 0
   curve.plots.df$Percentile[grep("*10", curve.plots.df$Ptile)] <- 10
@@ -767,11 +883,11 @@ results_tables_plots <- function(
   curve.plots.df$Percentile[grep("*max", curve.plots.df$Ptile)] <- 100
   curve.plots.df$mtype <- ""
   curve.plots.df$mtype[
-    grep("^m1", curve.plots.df$Scenario)] <- "J  =  6,  low"
+    grep("^m1", curve.plots.df$Scenario)] <- "J = 8, low"
   curve.plots.df$mtype[
-    grep("^m2", curve.plots.df$Scenario)] <- "J  =  12,  high"
+    grep("^m2", curve.plots.df$Scenario)] <- "J = 17, high"
   curve.plots.df$mtype <- factor(
-    curve.plots.df$mtype, levels = c("J  =  6,  low", "J  =  12,  high"))
+    curve.plots.df$mtype, levels = c("J = 8, low", "J = 17, high"))
   curve.plots.df$SNR <- ""
   curve.plots.df$SNR[grep("*loSNR", curve.plots.df$Scenario)] <- "Low"
   curve.plots.df$SNR[grep("*hiSNR", curve.plots.df$Scenario)] <- "High"
@@ -814,7 +930,7 @@ results_tables_plots <- function(
   }
   for (name.x in x.true.names) curve.plots.df[[paste0("X.", name.x)]] <- 
     tmp.df[[paste0("X.", name.x)]]
-  #combine true and estimated data.frames,  adding true erc values as an 
+  #combine true and estimated data.frames, adding true erc values as an 
   #additional "method" for plotting purposes
   for (name.x in x.true.names) {
     if (name.x == x.true.names[1]) {
@@ -838,20 +954,23 @@ results_tables_plots <- function(
   rm(tmp.df)
   
   ##----------------------------------------------------------------------------
-  #FIGURE 10: plot est curves for MPB,  for all methods in one rep
+  #FIGURE 10: plot est curves for MPB, for all methods in one rep
   curve.plot.MPB <- ggplot(
     subset(erc.plots.df, 
-           (Method %in% c("BKMR", "BART", "BSTARSS", "GAM", "True"))), 
+           (Method %in% c("BKMR", "BART", "BSTARSS", "GAMDP", 
+                          "GAMTS", "MARS", "GAM", "True"))), 
     aes(X.MPB, Y.MPB)) + 
     facet_grid(erfn ~ mtype + SNR + corr) + 
     geom_line(
       data = subset(erc.plots.df, 
-                    (RepID %in% c("X2"))&
-                    (Method %in% c("BKMR", "BART", "BSTARSS", "GAM", "True"))), 
+                    (RepID %in% c("B2"))&
+                    (Method %in% c("BKMR", "BART", "BSTARSS", "GAMDP", 
+                                   "GAMTS", "MARS", "GAM", "True"))), 
       aes(color = factor(Method)), size = 0.75) + 
-    scale_color_manual(
-      name = "Method",
-      values = c("#F8766D", "#7CAE00", "#00BFC4", "#C77CFF", "black")) + 
+    scale_colour_manual(
+      name = "Method", 
+      values = c("#C75759", "#59A14F", "#4E79A7", "#EE82EE", 
+                 "#8CD17D", "#BDDDF3", "#8C54BF", "black")) + 
     xlab("MPB") + 
     ylab("Estimated value") + 
     theme_bw() + 
@@ -861,7 +980,7 @@ results_tables_plots <- function(
           panel.grid.minor = element_blank())
   print(curve.plot.MPB)
   curve.plot.MPB <- ggdraw(curve.plot.MPB) + 
-    draw_label("Model,  sparsity", x = 0.905, y = 0.9755, hjust = 0) + 
+    draw_label("Model, sparsity", x = 0.905, y = 0.9755, hjust = 0) + 
     draw_label("SNR", x = 0.905, y = (0.9755 + 0.92375)/2, hjust = 0) + 
     draw_label("Correlation", x = 0.905, y = 0.92375, hjust = 0)
   ggsave("Figure_10.pdf", plot = curve.plot.MPB, 
