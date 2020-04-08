@@ -3,6 +3,7 @@
 #            estimating the non-linear health effects of correlated
 #            chemical mixtures: a simulation study."
 # Authors:   Nina Lazarevic, Luke D. Knibbs, Peter D. Sly, Adrian G. Barnett
+# Preprint:  https://arxiv.org/abs/1908.01583
 #
 # Written by Nina Lazarevic using R 3.4.3
 #
@@ -34,91 +35,31 @@ simulate_data<-function(x) {
   #simulate exposure data using multivariate t copula and kernel-smoothed
   #truncated empirical marginal distributions
   
+  message("Simulating exposure data...")
+  
   dtrunckernel <<- ftrunckernel
   
+  #fit t copula to nhanes data to obtain DoF
+  tCop <- tCopula(dim = K, dispstr = "un")
+  fit.tCop <- fitCopula(tCop, pobs(x.lnstd), method = "ml")
+
   #create multivarate distribution based on t copula
   tCop <- tCopula(
     param = cor(x.lnstd, method = "spearman")[lower.tri(cor(x.lnstd))],
     dim = K,
-    dispstr = "un"
-  )
+    dispstr = "un",
+    df = coefficients(fit.tCop)[K*(K - 1)/2 + 1])
+  mp_list <- list()
+  for (i in 1:K) {
+    mp_list[[i]] <- list(
+      a = min(x.lnstd[, i]),
+      b = max(x.lnstd[, i]),
+      X = x.lnstd[, i],
+      h = bw.nrd(x.lnstd[, i]))
+  }
   mvd <- mvdc(copula = tCop,
               margins = rep("trunckernel", K),
-              paramMargins = list(
-                list(
-                  a = min(x.lnstd[, "ECP"]),
-                  b = max(x.lnstd[, "ECP"]),
-                  X = x.lnstd[, "ECP"],
-                  h = bw.nrd(x.lnstd[, "ECP"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MEP"]),
-                  b = max(x.lnstd[, "MEP"]),
-                  X = x.lnstd[, "MEP"],
-                  h = bw.nrd(x.lnstd[, "MEP"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MPB"]),
-                  b = max(x.lnstd[, "MPB"]),
-                  X = x.lnstd[, "MPB"],
-                  h = bw.nrd(x.lnstd[, "MPB"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MOH"]),
-                  b = max(x.lnstd[, "MOH"]),
-                  X = x.lnstd[, "MOH"],
-                  h = bw.nrd(x.lnstd[, "MOH"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MBP"]),
-                  b = max(x.lnstd[, "MBP"]),
-                  X = x.lnstd[, "MBP"],
-                  h = bw.nrd(x.lnstd[, "MBP"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MHH"]),
-                  b = max(x.lnstd[, "MHH"]),
-                  X = x.lnstd[, "MHH"],
-                  h = bw.nrd(x.lnstd[, "MHH"])
-                ),
-                list(
-                  a = min(x.lnstd[, "BP3"]),
-                  b = max(x.lnstd[, "BP3"]),
-                  X = x.lnstd[, "BP3"],
-                  h = bw.nrd(x.lnstd[, "BP3"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MZP"]),
-                  b = max(x.lnstd[, "MZP"]),
-                  X = x.lnstd[, "MZP"],
-                  h = bw.nrd(x.lnstd[, "MZP"])
-                ),
-                list(
-                  a = min(x.lnstd[, "PPB"]),
-                  b = max(x.lnstd[, "PPB"]),
-                  X = x.lnstd[, "PPB"],
-                  h = bw.nrd(x.lnstd[, "PPB"])
-                ),
-                list(
-                  a = min(x.lnstd[, "COP"]),
-                  b = max(x.lnstd[, "COP"]),
-                  X = x.lnstd[, "COP"],
-                  h = bw.nrd(x.lnstd[, "COP"])
-                ),
-                list(
-                  a = min(x.lnstd[, "MIB"]),
-                  b = max(x.lnstd[, "MIB"]),
-                  X = x.lnstd[, "MIB"],
-                  h = bw.nrd(x.lnstd[, "MIB"])
-                ),
-                list(
-                  a = min(x.lnstd[, "BPA"]),
-                  b = max(x.lnstd[, "BPA"]),
-                  X = x.lnstd[, "BPA"],
-                  h = bw.nrd(x.lnstd[, "BPA"])
-                )
-              )
-  )
+              paramMargins = mp_list)
   
   #simulate exposure data
   set.seed(seed.sim_exposures)
@@ -127,92 +68,21 @@ simulate_data<-function(x) {
   dimnames(simX)[[2]] <- colnames(x.lnstd)
   simXmat <- aperm(simX, c(1, 3, 2))
   dim(simXmat) <- c(N * reps, K)
+  colnames(simXmat)<-colnames(x.lnstd)
   
   #create multivarate distribution based on t copula for "low correlation" data
   halfcorrmat <- 0.5 * cor(x.lnstd, method = "spearman")
   diag(halfcorrmat) <- 1
   halfcorrmat.lowertri <- halfcorrmat[lower.tri(cor(x.lnstd))]
-  tCop.halfcorr <- tCopula(param = halfcorrmat.lowertri,
-                           dim = K,
-                           dispstr = "un")
+  tCop.halfcorr <- tCopula(
+    param = halfcorrmat.lowertri,
+    dim = K,
+    dispstr = "un",
+    df = coefficients(fit.tCop)[K*(K - 1)/2 + 1])
   mvd.halfcorr <- mvdc(copula = tCop.halfcorr,
                        margins = rep("trunckernel", K),
-                       paramMargins = list(
-                         list(
-                           a = min(x.lnstd[, "ECP"]),
-                           b = max(x.lnstd[, "ECP"]),
-                           X = x.lnstd[, "ECP"],
-                           h = bw.nrd(x.lnstd[, "ECP"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MEP"]),
-                           b = max(x.lnstd[, "MEP"]),
-                           X = x.lnstd[, "MEP"],
-                           h = bw.nrd(x.lnstd[, "MEP"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MPB"]),
-                           b = max(x.lnstd[, "MPB"]),
-                           X = x.lnstd[, "MPB"],
-                           h = bw.nrd(x.lnstd[, "MPB"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MOH"]),
-                           b = max(x.lnstd[, "MOH"]),
-                           X = x.lnstd[, "MOH"],
-                           h = bw.nrd(x.lnstd[, "MOH"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MBP"]),
-                           b = max(x.lnstd[, "MBP"]),
-                           X = x.lnstd[, "MBP"],
-                           h = bw.nrd(x.lnstd[, "MBP"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MHH"]),
-                           b = max(x.lnstd[, "MHH"]),
-                           X = x.lnstd[, "MHH"],
-                           h = bw.nrd(x.lnstd[, "MHH"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "BP3"]),
-                           b = max(x.lnstd[, "BP3"]),
-                           X = x.lnstd[, "BP3"],
-                           h = bw.nrd(x.lnstd[, "BP3"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MZP"]),
-                           b = max(x.lnstd[, "MZP"]),
-                           X = x.lnstd[, "MZP"],
-                           h = bw.nrd(x.lnstd[, "MZP"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "PPB"]),
-                           b = max(x.lnstd[, "PPB"]),
-                           X = x.lnstd[, "PPB"],
-                           h = bw.nrd(x.lnstd[, "PPB"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "COP"]),
-                           b = max(x.lnstd[, "COP"]),
-                           X = x.lnstd[, "COP"],
-                           h = bw.nrd(x.lnstd[, "COP"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "MIB"]),
-                           b = max(x.lnstd[, "MIB"]),
-                           X = x.lnstd[, "MIB"],
-                           h = bw.nrd(x.lnstd[, "MIB"])
-                         ),
-                         list(
-                           a = min(x.lnstd[, "BPA"]),
-                           b = max(x.lnstd[, "BPA"]),
-                           X = x.lnstd[, "BPA"],
-                           h = bw.nrd(x.lnstd[, "BPA"])
-                         )
-                       )
-  )
-  
+                       paramMargins = mp_list) 
+
   #simulate "low correlation" exposure data
   set.seed(seed.sim_exposures)
   simX.halfcorr <- array(NaN, dim = c(N, K, reps))
@@ -221,6 +91,7 @@ simulate_data<-function(x) {
   dim(simX.halfcorr)
   simXmat.halfcorr <- aperm(simX.halfcorr, c(1, 3, 2))
   dim(simXmat.halfcorr) <- c(N * reps, K)
+  colnames(simXmat.halfcorr) <- colnames(x.lnstd)
   
   rm(dtrunckernel, envir = .GlobalEnv)
   
@@ -356,7 +227,7 @@ simulate_data<-function(x) {
       
       if (i %in% seq(0, reps, 10))
         message(paste0("For correlation structure ",
-          toupper(corr_struct), ", simulating data for replication ", i))
+          toupper(corr_struct), ", simulating outcome data for replication ", i))
       
       seed = seed.sim_outcomes_start + i
       
@@ -386,10 +257,10 @@ simulate_data<-function(x) {
       #simulated y, linear relationship
       Y.l.k4.loSNR <-
         expY.l.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.l.k4, seed) - R2.loSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.l.k4, seed) - R2.loSNR, c(0.1, 40))$root
       Y.l.k4.hiSNR <-
         expY.l.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.l.k4, seed) - R2.hiSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.l.k4, seed) - R2.hiSNR, c(0.1, 40))$root
 
       #find AUC of linear function
       AUC.MPB.l <- integrate(linfn, lower = min(MPB), upper = max(MPB), 
@@ -442,10 +313,10 @@ simulate_data<-function(x) {
       #simulated y, S-shaped relationship
       Y.s.k4.loSNR <-
         expY.s.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.s.k4, seed) - R2.loSNR, c(0.01, 30))$root
+          R2fn(x, expY = expY.s.k4, seed) - R2.loSNR, c(0.01, 40))$root
       Y.s.k4.hiSNR <-
         expY.s.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.s.k4, seed) - R2.hiSNR, c(0.01, 30))$root
+          R2fn(x, expY = expY.s.k4, seed) - R2.hiSNR, c(0.01, 40))$root
       
       #find value of vy argument required for inverse U-shaped quadratic fn, 
       #so that AUC equal to linear function AUC
@@ -493,10 +364,10 @@ simulate_data<-function(x) {
       #simulated y,  inverse U-shaped quadratic relationship
       Y.q.k4.loSNR <-
         expY.q.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.q.k4, seed) - R2.loSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.q.k4, seed) - R2.loSNR, c(0.1, 40))$root
       Y.q.k4.hiSNR <-
         expY.q.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.q.k4, seed) - R2.hiSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.q.k4, seed) - R2.hiSNR, c(0.1, 40))$root
       
       #find value of multiplying factor on scale of asymmetric inverse U-shaped 
       #function, required so that AUC equal to linear function AUC
@@ -539,10 +410,10 @@ simulate_data<-function(x) {
       #simulated y, asymmetric inverse U-shaped relationship
       Y.a.k4.loSNR <-
         expY.a.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.a.k4, seed) - R2.loSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.a.k4, seed) - R2.loSNR, c(0.1, 40))$root
       Y.a.k4.hiSNR <-
         expY.a.k4 + e * uniroot(function(x)
-          R2fn(x, expY = expY.a.k4, seed) - R2.hiSNR, c(0.1, 30))$root
+          R2fn(x, expY = expY.a.k4, seed) - R2.hiSNR, c(0.1, 40))$root
       
       #add to simY matrix
       if (corr_struct == "obscorr") {
