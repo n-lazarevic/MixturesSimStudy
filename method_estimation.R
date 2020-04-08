@@ -3,6 +3,7 @@
 #            estimating the non-linear health effects of correlated
 #            chemical mixtures: a simulation study."
 # Authors:   Nina Lazarevic,  Luke D. Knibbs,  Peter D. Sly,  Adrian G. Barnett
+# Preprint:  https://arxiv.org/abs/1908.01583
 #
 # Written by Nina Lazarevic using R 3.4.3
 #
@@ -22,9 +23,12 @@ method_estimation <- function(
   require(doParallel)   #version 1.0.11
   if (select_method == "bkmr") require(bkmr)         #version 0.2.0
   if (select_method == "bart") require(bartMachine)  #version 1.2.3
-  if (select_method == "star") require(spikeSlabGAM) #version 1.1 - 14
-  if (select_method == "lasso") require(glmnet)      #version 2.0 - 13
-  if (select_method == "gam") require(mgcv)          #version 1.8 - 23
+  if (select_method == "star") require(spikeSlabGAM) #version 1.1-14
+  if (select_method == "lasso") require(glmnet)      #version 2.0-13
+  if (select_method == "gamdp") require(mgcv)        #version 1.8-23
+  if (select_method == "gamts") require(mgcv)        #version 1.8-23
+  if (select_method == "mars") require(earth)        #version 4.6.0
+  if (select_method == "gam") require(mgcv)          #version 1.8-23
   
   #simulated data
   list2env(sim.data, envir = environment())
@@ -54,8 +58,9 @@ method_estimation <- function(
   #cols 3, 7, 11, 15   quadratic, symmetric inv-U-shaped
   #cols 4, 8, 12, 16   asymmetric inv-U-shaped
   
-  for (corr_struct in c("obscorr", "halfcorr")) {
-    
+  #for (corr_struct in c("obscorr", "halfcorr")) {
+    for (corr_struct in c("obscorr")) { ############1of2
+      
     message(paste(toupper(select_method), ": Started working on ", 
                   toupper(corr_struct), " at ", Sys.time(), ".", sep = ""))
     
@@ -72,14 +77,14 @@ method_estimation <- function(
                          dimnames = list(NULL, x.names.m2, scenario.names.m2))
       
       res <- list(
-        m1 = list(pips = init.arr1, sel = init.arr1), 
-        m2 = list(pips = init.arr2, sel = init.arr2), 
+        m1 = list(vimp = init.arr1, sel = init.arr1), 
+        m2 = list(vimp = init.arr2, sel = init.arr2), 
         rank_correct = init.mat.logical, 
         rank_correct_gr = init.mat.logical, 
         prop_rank_correct = init.mat, 
         prop_rank_correct_gr = init.mat, 
         sum.sel = init.mat, sens = init.mat, spec = init.mat, 
-        FDR = init.mat, prec = init.mat, NPV = init.mat, FPR = init.mat, 
+        FDR = init.mat, PPV = init.mat, NPV = init.mat, FPR = init.mat, 
         TP = init.mat, FP = init.mat, TN = init.mat, FN = init.mat, 
         F1 = init.mat)
       
@@ -128,7 +133,8 @@ method_estimation <- function(
     }
     
     #loop over reps
-    for (i in 1:reps) {
+    #for (i in 1:reps) { 
+      for (i in 1:1) { ############2of2
       
       message(paste(toupper(select_method), ": Started rep ", i, " of ", reps, 
                     " at ", Sys.time(), ".", sep = ""))
@@ -277,13 +283,17 @@ method_estimation <- function(
           
           set.seed(seed)
           
+          
           fmla <- as.formula(paste(
-            colnames(d)[j], "~", paste(x.names[x.inc[[j]]], collapse = " + ")))
+            colnames(d)[j], "~", paste0("lin(", x.names[x.inc[[j]]], ")", "+",
+                                        "sm(", x.names[x.inc[[j]]], ",K=10)",
+                                        collapse = "+")))
           m.star <- spikeSlabGAM(
             formula = fmla, data = d, 
             start = list(seed = as.integer(seed)), 
             mcmc = list(burnin = iter.burnin.star, nChains = 5, 
-                        chainLength = iter.star, thin = 1, reduceRet = TRUE), 
+                        chainLength = iter.star - iter.burnin.star, 
+                        thin = 1, reduceRet = TRUE), 
             hyperparameters = list(w = c(1, 1), tau2 = c(5, 40), 
                                    gamma = c(0.025), sigma2 = c(0.001, 0.001)))
           
@@ -354,6 +364,121 @@ method_estimation <- function(
           
         }
         
+      } else if (select_method=="gamdp") {
+        
+        #GAMDP (GAM with double penalty variable selection): estimate models for rep i
+        comb.res <- foreach(j = 1:N.scenarios, .packages = "mgcv") %dopar% {
+          
+          set.seed(seed)
+          
+          fmla <- as.formula(paste(
+            colnames(d)[j], "~" ,
+            paste("s(", x.names[x.inc[[j]]], ",k=10)", 
+                  collapse = "+"), sep = ""))
+          m.gamdp <- gam(formula = fmla, family = gaussian(link = identity), 
+                         data = d, method = "REML", select = TRUE)
+          
+          result <- resClass()
+          result$model <- m.gamdp
+          result$vs <- round(summary(m.gamdp)$edf, 2) #use EDF!=0 for variable selection 
+          
+          tmperc <- array(NaN, dim = c(length(probs), 3, K.true), 
+                          dimnames = list(paste(probs*100, "%", sep = ""), 
+                                          c("point", "loCI", "hiCI"), x.true.names))
+          for (name.x in x.true.names) {
+            tmppredict <- predict(
+              m.gamdp, newdata = as.data.frame(d.new[[j]][, , name.x]), 
+              se.fit = T)
+            tmperc[, , name.x] <- cbind(
+              tmppredict$fit, 
+              tmppredict$fit + qnorm(0.05)*tmppredict$se.fit, 
+              tmppredict$fit + qnorm(0.95)*tmppredict$se.fit)
+          }
+          result$erc <- tmperc
+          
+          return(result)
+          
+        }
+        
+      } else if (select_method=="gamts") {
+        
+        #GAMTS (GAM with ts() basis for variable selection): estimate models for rep i
+        comb.res <- foreach(j = 1:N.scenarios, .packages = "mgcv") %dopar% {
+          
+          set.seed(seed)
+          
+          fmla <- as.formula(paste(
+            colnames(d)[j], "~",
+            paste("s(", x.names[x.inc[[j]]], ",bs=\"ts\",k=10)",
+                  collapse = "+"), sep = ""))
+          m.gamts <- gam(formula = fmla,family = gaussian(link = identity),
+                       data = d, method = "REML")
+          
+          result <- resClass()
+          result$model <- m.gamts
+          result$vs <- round(summary(m.gamts)$edf, 2) #use EDF!=0 for variable selection 
+          
+          tmperc <- array(NaN, dim = c(length(probs), 3, K.true), 
+                          dimnames = list(paste(probs*100, "%", sep = ""), 
+                                          c("point", "loCI", "hiCI"), x.true.names))
+          for (name.x in x.true.names) {
+            tmppredict <- predict(
+              m.gamts, newdata = as.data.frame(d.new[[j]][, , name.x]), 
+              se.fit = T)
+            tmperc[, , name.x] <- cbind(
+              tmppredict$fit, 
+              tmppredict$fit + qnorm(0.05)*tmppredict$se.fit, 
+              tmppredict$fit + qnorm(0.95)*tmppredict$se.fit)
+          }
+          result$erc <- tmperc
+          
+          return(result)
+          
+        }
+        
+      } else if (select_method=="mars") {
+        
+        #MARS: estimate models for rep i
+        comb.res <- foreach(j = 1:N.scenarios, .packages = "earth") %dopar% {
+          
+          set.seed(seed)
+          
+          fmla <- as.formula(paste(
+            colnames(d)[j], "~", 
+            paste(x.names[x.inc[[j]]], collapse = "+"), sep = ""))
+          m.mars <- earth(formula = fmla, data = d, pmethod = "cv", 
+                          ncross = 30, nfold = 10, varmod.method = "lm")
+          ev <- evimp(m.mars)
+          
+          result <- resClass()
+          result$model <- m.mars
+          vimp.mars <- array(0, dim = K.scenario[j], 
+                             dimnames = list(m.mars$namesx))
+          if (length(ev) != 0) {
+            vimp.mars[na.omit(match(rownames(ev), m.mars$namesx))] <-
+              ev[, "nsubsets"]
+          }
+          result$vs <- vimp.mars
+          
+          tmperc <- array(
+            NaN, dim = c(length(probs), 3, K.true), 
+            dimnames = list(paste(probs*100, "%", sep = ""), 
+                            c("point", "loCI", "hiCI"), x.true.names))
+          for (name.x in x.true.names) {
+            tmppredict <- predict(
+              m.mars, newdata = as.data.frame(d.new[[j]][, , name.x]), 
+              interval = "pint", level = 0.9)
+            tmperc[, , name.x] <- cbind(
+              tmppredict$fit, 
+              tmppredict$lwr, 
+              tmppredict$upr)
+          }
+          result$erc <- tmperc
+          
+          return(result)
+          
+        }
+        
       }
       
       #stop cluster
@@ -370,21 +495,21 @@ method_estimation <- function(
         if (select_method != "gam") {
           
           sel <- rep(FALSE, K.scenario[j])
-          pips <- rep(NaN, K.scenario[j])
+          vimp <- rep(NaN, K.scenario[j])
           
           if (select_method == "bkmr") {
             
             #BKMR: record variable selection results and 
-            #      posterior inclusion probabilities
+            #      posterior inclusion probabilities (as variable "vimp")
             sel <- comb.res[[j]]$vs$PIP > 0.5
-            pips <- comb.res[[j]]$vs$PIP
+            vimp <- comb.res[[j]]$vs$PIP
             
           } else if (select_method == "bart") {
             
             #BART: record variable selection results and 
-            #      variable inclusion proportions (as variable "pips")
+            #      variable inclusion proportions (as variable "vimp")
             sel[comb.res[[j]]$vs$important_vars_local_col_nums] <- TRUE
-            pips <- comb.res[[j]]$vs$var_true_props_avg[c(x.names)[x.inc[[j]]]]
+            vimp <- comb.res[[j]]$vs$var_true_props_avg[c(x.names)[x.inc[[j]]]]
             
             #keep selections using other cutoffs
             sel.global_max <- sel.global_se <- rep(FALSE, K.scenario[j])
@@ -398,10 +523,10 @@ method_estimation <- function(
           } else if (select_method == "star") {
             
             #STAR: record variable selection results and 
-            #      posterior inclusion probabilities
+            #      posterior inclusion probabilities (as variable "vimp")
             for (l in 1:K.scenario[j]) sel[l] <- any(
               comb.res[[j]]$model$postMeans$pV1[c((2*(l - 1) + 1):(l*2))] > 0.5)
-            for (l in 1:K.scenario[j]) pips[l] <- sum(
+            for (l in 1:K.scenario[j]) vimp[l] <- sum(
               comb.res[[j]]$model$postMeans$pV1[c((2*(l - 1) + 1):(l*2))])
             res[[m.type[j]]]$p1.lin[i, , j.m] <- 
               comb.res[[j]]$model$postMeans$pV1[seq(1, K.scenario[j]*2, 2)]
@@ -415,20 +540,38 @@ method_estimation <- function(
             res[[m.type[j]]]$coefs[i, , j.m] <- coef(
               comb.res[[j]]$model, s = comb.res[[j]]$model$lambda.min)[-1]
             
-          }
+          } else if (select_method=="gamdp") {
+            
+            #GAMDP: record variable selection results and EDFs (as variable "vimp")
+            sel <- comb.res[[j]]$vs != 0
+            vimp <- comb.res[[j]]$vs
+            
+          } else if (select_method=="gamts") { 
+            
+            #GAMTS: record variable selection results and EDFs (as variable "vimp")
+            sel <- comb.res[[j]]$vs != 0
+            vimp <- comb.res[[j]]$vs
+            
+          } else if (select_method=="mars") { 
+            
+            #MARS: record variable selection results and variable importance using nsubsets (as variable "vimp")
+            sel <- comb.res[[j]]$vs != 0
+            vimp <- comb.res[[j]]$vs
+            
+          } 
           
           res[[m.type[j]]]$sel[i, , j.m] <- sel
           
           if (select_method != "lasso") {
-            res[[m.type[j]]]$pips[i, , j.m] <- pips
+            res[[m.type[j]]]$vimp[i, , j.m] <- vimp
             res$rank_correct[i, j] <-
-              min(pips[x.true[[j]]]) >= max(pips[!x.true[[j]]])
+              min(vimp[x.true[[j]]]) >= max(vimp[!x.true[[j]]])
             res$rank_correct_gr[i, j] <-
-              min(pips[x.true[[j]]]) > max(pips[!x.true[[j]]])
+              min(vimp[x.true[[j]]]) > max(vimp[!x.true[[j]]])
             res$prop_rank_correct[i, j] <-
-              sum(pips[x.true[[j]]] >= max(pips[!x.true[[j]]])) / K.true
+              sum(vimp[x.true[[j]]] >= max(vimp[!x.true[[j]]])) / K.true
             res$prop_rank_correct_gr[i, j] <-
-              sum(pips[x.true[[j]]] > max(pips[!x.true[[j]]])) / K.true
+              sum(vimp[x.true[[j]]] > max(vimp[!x.true[[j]]])) / K.true
           }
           
           TP <- sel * x.true[[j]]
@@ -444,10 +587,10 @@ method_estimation <- function(
           res$sens[i, j] <- res$TP[i, j] / sum(x.true[[j]])
           res$spec[i, j] <- res$TN[i, j] / sum(!x.true[[j]])
           res$FDR[i, j] <- res$FP[i, j] / sum(sel)
-          res$prec[i, j] <- 1 - res$FDR[i, j]
+          res$PPV[i, j] <- 1 - res$FDR[i, j]
           res$NPV[i, j] <- res$TN[i, j] / sum(!sel)
           res$F1[i, j] <-
-            2*(res$prec[i, j]*res$sens[i, j]) / (res$prec[i, j] + res$sens[i, j])
+            2*(res$PPV[i, j]*res$sens[i, j]) / (res$PPV[i, j] + res$sens[i, j])
           res$FPR[i, j] <-
             res$FP[i, j] / (res$FP[i, j] + res$TN[i, j])
           
@@ -550,7 +693,7 @@ method_estimation <- function(
     #clean up
     rm(d, res)
     if (select_method != "gam") rm(TP, FP, TN, FN, sel)
-    if (select_method != "lasso") rm(pips, mse.25, coverage.25, true.erc.25.tmp, k)
+    if (select_method != "lasso") rm(mse.25, coverage.25, true.erc.25.tmp, k)
     if (select_method == "bkmr") rm(lambda.jump, r.jump2)
     if (select_method == "bart") rm(sel.global_max, sel.global_se)
     
